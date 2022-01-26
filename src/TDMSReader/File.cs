@@ -34,6 +34,7 @@ namespace NationalInstruments.Tdms
         {
             var reader = new Reader(_stream.Value);
             var metadata = LoadMetadata(reader).ToList();
+            metadata = MergeMetaData(metadata);
             LoadFile(metadata);
             LoadGroups(Groups, metadata);
             LoadChannels(Groups, metadata, reader);
@@ -149,7 +150,7 @@ namespace NationalInstruments.Tdms
         {
             var segments = GetSegments(reader).ToList();
 
-            var prevMetaDataLookup = new Dictionary<string, Dictionary<string, Reader.Metadata>>();
+            var prevMetaDataLookup = new Dictionary<string, Reader.Metadata>();
             foreach (var segment in segments)
             {
                 if (!(segment.TableOfContents.ContainsNewObjects || 
@@ -166,10 +167,12 @@ namespace NationalInstruments.Tdms
                 {
                     if (m.RawData.Count == 0 && m.Path.Length > 1)
                     {
+                        //get full metadata path
+                        var mypath = getMetaDataPath(m); 
                         // apply previous metadata if available
-                        if (prevMetaDataLookup.ContainsKey(m.Path[0]) && prevMetaDataLookup[m.Path[0]].ContainsKey(m.Path[1]))
+                        if (prevMetaDataLookup.ContainsKey(mypath))
                         {
-                            var prevMetaData = prevMetaDataLookup[m.Path[0]][m.Path[1]];
+                            var prevMetaData = prevMetaDataLookup[mypath];
                             if (prevMetaData != null)
                             {
                                 m.RawData.Count = segment.TableOfContents.HasRawData ? prevMetaData.RawData.Count : 0;
@@ -181,7 +184,7 @@ namespace NationalInstruments.Tdms
                                 m.RawData.Size = prevMetaData.RawData.Size;
                                 m.RawData.Dimension = prevMetaData.RawData.Dimension;
                             }
-                        }
+						}
                     }
                     if (m.RawData.IsInterleaved && segment.NextSegmentOffset <= 0)
                     {
@@ -231,15 +234,14 @@ namespace NationalInstruments.Tdms
                     }
                 }
                 var metadataWithImplicit = metadatas.Concat(implicitMetadatas).ToList();
+				
                 foreach (var metadata in metadataWithImplicit)
                 {
                     if (metadata.Path.Length == 2)
                     {
-                        if (!prevMetaDataLookup.ContainsKey(metadata.Path[0]))
-                        {
-                            prevMetaDataLookup[metadata.Path[0]] = new Dictionary<string, Reader.Metadata>();
-                        }
-                        prevMetaDataLookup[metadata.Path[0]][metadata.Path[1]] = metadata;
+                        var mypath = getMetaDataPath(metadata);
+
+                        prevMetaDataLookup[mypath] = metadata;
                     }
                     yield return metadata;
                 }
@@ -258,6 +260,57 @@ namespace NationalInstruments.Tdms
 
         public IEnumerator<Group> GetEnumerator() { return Groups.Values.GetEnumerator(); }
         IEnumerator IEnumerable.GetEnumerator() { return GetEnumerator(); }
+
+        private static List<Reader.Metadata> MergeMetaData(IList<Reader.Metadata> list)
+        {
+            Dictionary<string, Reader.Metadata> merged = new Dictionary<string, Reader.Metadata>();
+            int counter = 0;
+            foreach (var item in list)
+            {
+                var path = getMetaDataPath(item);
+                if (!merged.ContainsKey(path))
+                {
+                    merged.Add(path, item);
+                }
+                else
+                {
+                    var orig = merged[path];
+                    merged[path] = mergeproperties(orig, item);
+                    merged.Add(path + counter.ToString(), item);
+                    counter++;
+                }
+            }
+            System.Diagnostics.Debug.WriteLine("merged!");
+            return merged.Select(x => x.Value).ToList();
+        }
+
+        private static Reader.Metadata mergeproperties(Reader.Metadata original, Reader.Metadata added)
+        {
+            var origdict = original.Properties;
+
+            foreach (var item in added.Properties)
+            {
+                if (origdict.ContainsKey(item.Key))
+                    origdict[item.Key] = item.Value;
+                else
+                {
+                    origdict.Add(item.Key, item.Value);
+                }
+            }
+            var orig = original;
+            orig.Properties = origdict;
+            return orig;
+        }
+
+        private static string getMetaDataPath(Reader.Metadata data)
+        {
+            string path = "";
+            foreach (var item in data.Path)
+            {
+                path += $"/'{item}'";
+            }
+            return path;
+        }
 
         public void Dispose()
         {

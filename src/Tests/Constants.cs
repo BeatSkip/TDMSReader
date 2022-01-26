@@ -12,6 +12,8 @@ namespace Tests
         public static readonly string AdditionalPropertiesFile = Path.Combine(TestDirectory, @"AdditionalProperties.tdms");
         public static readonly string IncrementalMetaInformation = Path.Combine(TestDirectory, @"IncrementalMetaInformation.tdms");
         public static readonly string IncrementalMetaInformationInterleavedData = Path.Combine(TestDirectory, @"IncrementalMetaInformationInterleavedData.tdms");
+        public static readonly string CuoreMetadataTestFile = Path.Combine(TestDirectory, @"cuore_measurement.tdms");
+
 
         public static Stream CreateStream()
         {
